@@ -64,11 +64,16 @@
         .history-section { margin-top: 30px; border-top: 1px solid var(--border); padding-top: 20px; }
         .history-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; display: flex; justify-content: space-between; }
         .history-item {
-            background: var(--bg); padding: 10px; border-radius: 10px; margin-bottom: 8px;
-            font-size: 12px; border: 1px solid var(--border);
+            background: var(--bg); padding: 12px; border-radius: 12px; margin-bottom: 8px;
+            font-size: 12px; border: 1px solid var(--border); position: relative;
         }
-        .history-item div { margin-bottom: 4px; }
+        .history-item div { margin-bottom: 4px; padding-right: 25px; }
         .history-item b { color: var(--accent); }
+        .delete-single {
+            position: absolute; top: 10px; right: 10px;
+            color: #ff3b30; cursor: pointer; font-size: 16px; opacity: 0.6;
+        }
+        .delete-single:hover { opacity: 1; }
         .clear-history { font-size: 11px; color: #ff3b30; cursor: pointer; text-decoration: underline; }
 
         .strength-meter { height: 4px; width: 100%; background: var(--strength-bg); margin-top: 10px; border-radius: 2px; overflow: hidden; }
@@ -113,7 +118,7 @@
 
     <div class="history-section">
         <div class="history-title">
-            Последние сохраненные <span class="clear-history" onclick="clearHistory()">Очистить всё</span>
+            Последние сохраненные <span class="clear-history" onclick="clearAllHistory()">Очистить всё</span>
         </div>
         <div id="history-list"></div>
     </div>
@@ -131,7 +136,7 @@
 
     function switchTab(type) {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        event.target.classList.add('active');
+        if(event) event.target.classList.add('active');
         document.getElementById('pass-section').classList.toggle('hidden', type !== 'pass');
         document.getElementById('nick-section').classList.toggle('hidden', type !== 'nick');
         document.getElementById('strength-wrap').classList.toggle('hidden', type !== 'pass');
@@ -139,13 +144,12 @@
         document.getElementById('result').innerText = '••••••••';
     }
 
-    // База слов
     const WORDS = {
-        cyber: ["Neon", "Cyber", "Glitch", "Net", "Codec", "Proxy", "Data", "Static", "Zenith", "Void", "Byte", "Matrix", "Synth", "Chrome", "Bit", "Signal", "Laser", "Grid", "Chip"],
-        gothic: ["Grave", "Shadow", "Soul", "Grim", "Dark", "Ghost", "Lullaby", "Abyss", "Bleak", "Silent", "Crow", "Raven", "Funeral", "Night", "Death", "Mist", "Moon", "Bone", "Blood"],
-        anime: ["Kawaii", "Senpai", "Sama", "Chan", "Haze", "Moon", "Sakura", "Spirit", "Echo", "Mirai", "Yume", "Aura", "Mochi", "Chibi", "Kami", "Sora", "Umi", "Kira"],
-        emo: ["Broken", "Vain", "Lost", "Tear", "Rose", "Bleeding", "Sad", "Heart", "End", "Never", "Cry", "Vivid", "Scars", "Hate", "Love", "Rain"],
-        post: ["Witch", "Error", "Demon", "Angel", "Blade", "Star", "Zero", "Punk", "Core", "Vain", "Lord", "Killer", "Soul", "God", "Dust", "Ash", "Storm"]
+        cyber: ["Neon", "Cyber", "Glitch", "Net", "Codec", "Proxy", "Data", "Static", "Zenith", "Void", "Byte", "Matrix", "Synth", "Chrome", "Bit", "Signal", "Laser", "Grid", "Chip", "Vortex", "Sudo", "Root"],
+        gothic: ["Grave", "Shadow", "Soul", "Grim", "Dark", "Ghost", "Lullaby", "Abyss", "Bleak", "Silent", "Crow", "Raven", "Funeral", "Night", "Death", "Mist", "Moon", "Bone", "Blood", "Doom", "Curse"],
+        anime: ["Kawaii", "Senpai", "Sama", "Chan", "Haze", "Moon", "Sakura", "Spirit", "Echo", "Mirai", "Yume", "Aura", "Mochi", "Chibi", "Kami", "Sora", "Umi", "Kira", "Neko", "Shinobi"],
+        emo: ["Broken", "Vain", "Lost", "Tear", "Rose", "Bleeding", "Sad", "Heart", "End", "Never", "Cry", "Vivid", "Scars", "Hate", "Love", "Rain", "Alone", "Void"],
+        post: ["Witch", "Error", "Demon", "Angel", "Blade", "Star", "Zero", "Punk", "Core", "Vain", "Lord", "Killer", "Soul", "God", "Dust", "Ash", "Storm", "Rebel", "X"]
     };
 
     function handleGenPass() {
@@ -173,7 +177,6 @@
     function genPassForNick() {
         const p = genPassLogic();
         saveToHistory(currentNick, p);
-        alert(`Пароль создан для ${currentNick} и сохранен в историю!`);
         document.getElementById('add-pass-btn').classList.add('hidden');
     }
 
@@ -204,8 +207,16 @@
     // История (LocalStorage)
     function saveToHistory(label, val) {
         let history = JSON.parse(localStorage.getItem('gen_history') || '[]');
-        history.unshift({ label, val, time: new Date().toLocaleTimeString() });
-        if(history.length > 10) history.pop();
+        // Используем timestamp как ID для удаления
+        history.unshift({ id: Date.now(), label, val, time: new Date().toLocaleTimeString() });
+        if(history.length > 15) history.pop();
+        localStorage.setItem('gen_history', JSON.stringify(history));
+        renderHistory();
+    }
+
+    function deleteItem(id) {
+        let history = JSON.parse(localStorage.getItem('gen_history') || '[]');
+        history = history.filter(item => item.id !== id);
         localStorage.setItem('gen_history', JSON.stringify(history));
         renderHistory();
     }
@@ -215,15 +226,18 @@
         const history = JSON.parse(localStorage.getItem('gen_history') || '[]');
         list.innerHTML = history.map(item => `
             <div class="history-item">
+                <span class="delete-single" onclick="deleteItem(${item.id})">×</span>
                 <div>[${item.time}] <b>${item.label}</b></div>
                 <div style="color:var(--text); opacity:0.7">${item.val}</div>
             </div>
         `).join('');
     }
 
-    function clearHistory() {
-        localStorage.removeItem('gen_history');
-        renderHistory();
+    function clearAllHistory() {
+        if(confirm("Очистить всю историю?")) {
+            localStorage.removeItem('gen_history');
+            renderHistory();
+        }
     }
 
     window.onload = renderHistory;
