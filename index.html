@@ -64,17 +64,19 @@
         .result-container {
             margin-top: 20px; padding: 16px; background: var(--bg);
             border-radius: 16px; border: 1px solid var(--border); text-align: center;
+            cursor: pointer; transition: 0.2s;
         }
-        #result { font-family: 'SF Mono', monospace; font-size: 18px; word-break: break-all; min-height: 24px; color: var(--text); }
+        .result-container:hover { border-color: var(--accent); }
+        #result { font-family: 'SF Mono', monospace; font-size: 16px; word-break: break-all; min-height: 24px; color: var(--text); }
         
         button.primary {
             width: 100%; padding: 16px; background: var(--accent); color: white;
             border: none; border-radius: 16px; font-weight: 600; cursor: pointer; margin-top: 12px;
         }
 
-        .mail-frame-wrapper {
+        .mail-wrapper {
             margin-top: 15px; border-radius: 16px; overflow: hidden;
-            border: 1px solid var(--border); height: 400px; display: none;
+            border: 1px solid var(--border); height: 500px; display: none;
             background: #fff;
         }
         iframe { width: 100%; height: 100%; border: none; }
@@ -83,7 +85,6 @@
             position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
             background: var(--toast-bg); color: white; padding: 10px 20px;
             border-radius: 20px; font-size: 14px; z-index: 100; display: none;
-            animation: toastFade 2s forwards;
         }
         
         .history-section { margin-top: 30px; border-top: 1px solid var(--border); padding-top: 20px; }
@@ -125,7 +126,7 @@
     </div>
 
     <div id="nick-section" class="hidden">
-        <div class="input-group"><label>Ключевое слово</label><input type="text" id="keyword" placeholder="Например: ghost"></div>
+        <div class="input-group"><label>Ключевое слово</label><input type="text" id="keyword" placeholder="ghost"></div>
         <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; margin-top:10px;">
             <input type="checkbox" id="random-case" checked> Random Case (cYbEr)
         </label>
@@ -134,20 +135,29 @@
     </div>
 
     <div id="mail-section" class="hidden">
-        <button class="primary" onclick="createMail()">🆕 Получить ящик</button>
-        <div id="mail-wrapper" class="mail-frame-wrapper">
+        <button class="primary" onclick="initMail()">🌐 Активировать ящик</button>
+        <p style="font-size: 11px; text-align: center; color: var(--accent); margin-top: 8px;">
+            1. Скопируй адрес внутри ящика.<br>
+            2. Кликни на поле результата ниже, чтобы сохранить его.
+        </p>
+        <div id="mail-container" class="mail-wrapper">
             <iframe id="mail-iframe" src=""></iframe>
         </div>
     </div>
 
-    <div class="result-container">
-        <div id="result">••••••••</div>
-        <div id="strength-wrap" class="strength-meter"><div id="strength-bar"></div></div>
+    <div id="result-wrapper">
+        <div class="result-container" onclick="copyResult()">
+            <div id="result">••••••••</div>
+            <div id="strength-wrap" class="strength-meter"><div id="strength-bar"></div></div>
+        </div>
     </div>
 
     <div class="history-section">
-        <div class="history-title">История 
-            <span style="font-size:11px; cursor:pointer; color:#ff3b30;" onclick="clearAllHistory()">Очистить</span>
+        <div class="history-title"> История 
+            <div style="display: flex; gap: 10px;">
+                <span style="font-size:11px; cursor:pointer; color:var(--accent);" onclick="exportHistory()">TXT</span>
+                <span style="font-size:11px; cursor:pointer; color:#ff3b30;" onclick="clearAllHistory()">Очистить</span>
+            </div>
         </div>
         <div id="history-list"></div>
     </div>
@@ -156,7 +166,6 @@
 <script>
     let currentNick = "";
 
-    // ВЕСЬ ТВОЙ СПИСОК СЛОВ (НИЧЕГО НЕ ВЫРЕЗАНО)
     const WORDS = {
         cyber: ["Neon", "Cyber", "Glitch", "Net", "Codec", "Proxy", "Data", "Static", "Zenith", "Void", "Byte", "Matrix", "Synth", "Chrome", "Bit", "Signal", "Laser", "Grid", "Chip", "Vortex", "Sudo", "Root", "Buffer", "Uplink"],
         gothic: ["Grave", "Shadow", "Soul", "Grim", "Dark", "Ghost", "Lullaby", "Abyss", "Bleak", "Silent", "Crow", "Raven", "Funeral", "Night", "Death", "Mist", "Moon", "Bone", "Blood", "Doom", "Curse", "Epitaph", "Relic"],
@@ -174,13 +183,28 @@
         localStorage.setItem('theme', nt);
     }
 
+    // ИСПРАВЛЕННАЯ ФУНКЦИЯ ПЕРЕКЛЮЧЕНИЯ
     function switchTab(type) {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         if(event) event.target.classList.add('active');
+        
         document.getElementById('pass-section').classList.toggle('hidden', type !== 'pass');
         document.getElementById('nick-section').classList.toggle('hidden', type !== 'nick');
         document.getElementById('mail-section').classList.toggle('hidden', type !== 'mail');
+        
+        const resWrap = document.getElementById('result-wrapper');
+        const resDiv = document.getElementById('result');
+        const bar = document.getElementById('strength-bar');
+
+        // Очищаем результат при смене вкладки, чтобы не висела "Загрузка"
+        resDiv.innerText = "••••••••";
+        bar.style.width = '0%';
+
+        // Показываем индикатор сложности только в паролях
         document.getElementById('strength-wrap').classList.toggle('hidden', type !== 'pass');
+        
+        // Скрываем всё поле результата, если мы в "Почте", пока там нет импортированного адреса
+        resWrap.classList.toggle('hidden', type === 'mail');
     }
 
     function showToast(text = "Скопировано!") {
@@ -189,24 +213,43 @@
         setTimeout(() => { t.style.display = 'none'; }, 2000);
     }
 
-    // ЛОГИКА ПОЧТЫ ЧЕРЕЗ IFRAME (БЕЗ CORS ОШИБОК)
-    function createMail() {
-        const user = Math.random().toString(36).substring(2, 10);
-        const domain = "1secmail.com";
-        const email = `${user}@${domain}`;
-        
-        document.getElementById('result').innerText = email;
-        const wrapper = document.getElementById('mail-wrapper');
+    // ПОЧТА
+    function initMail() {
         const iframe = document.getElementById('mail-iframe');
+        const container = document.getElementById('mail-container');
+        const resWrap = document.getElementById('result-wrapper');
+        const resDiv = document.getElementById('result');
+
+        // Когда нажимаем активацию, показываем поле результата с подсказкой
+        resWrap.classList.remove('hidden');
+        resDiv.innerText = "Ожидание импорта...";
         
-        wrapper.style.display = 'block';
-        iframe.src = `https://www.1secmail.com/?login=${user}&domain=${domain}`;
-        
-        saveToHistory("Почта", email);
-        navigator.clipboard.writeText(email).then(() => showToast("Адрес скопирован!"));
+        container.style.display = 'block';
+        iframe.src = "https://www.guerrillamail.com/inbox"; 
     }
 
-    // ЛОГИКА ПАРОЛЕЙ
+    // КОПИРОВАНИЕ И ИМПОРТ
+    function copyResult() {
+        const resDiv = document.getElementById('result');
+        const text = resDiv.innerText;
+
+        if(text.includes("Ожидание") || text === "••••••••") {
+            navigator.clipboard.readText().then(clip => {
+                if(clip.includes('@')) {
+                    resDiv.innerText = clip;
+                    saveToHistory("Почта", clip);
+                    showToast("Адрес импортирован!");
+                } else {
+                    showToast("Скопируй адрес в ящике!");
+                }
+            }).catch(() => showToast("Нужен доступ к буферу!"));
+            return;
+        }
+
+        navigator.clipboard.writeText(text).then(() => showToast());
+    }
+
+    // ГЕНЕРАЦИЯ ПАРОЛЯ
     function genPassLogic() {
         const l = +document.getElementById('len').value, s = +document.getElementById('spec').value, 
               u = +document.getElementById('upper').value, n = +document.getElementById('nums').value;
@@ -232,7 +275,7 @@
         navigator.clipboard.writeText(p).then(() => showToast());
     }
 
-    // ЛОГИКА НИКОВ (ВСЕ ДЕКОРАЦИИ ВЕРНУЛ)
+    // ГЕНЕРАЦИЯ НИКА
     function handleGenNick() {
         const key = document.getElementById('keyword').value.trim();
         const allPre = Object.values(WORDS).flat();
@@ -278,6 +321,16 @@
                 <div class="history-item-content">${i.label}: ${i.val}</div>
             </div>
         `).join('');
+    }
+
+    function exportHistory() {
+        const h = JSON.parse(localStorage.getItem('gen_history') || '[]');
+        if(!h.length) return showToast("История пуста");
+        const txt = h.map(i => `[${i.time}] ${i.label}: ${i.val}`).join('\n');
+        const blob = new Blob([txt], {type: 'text/plain'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'history.txt'; a.click();
     }
 
     function deleteItem(id) {
